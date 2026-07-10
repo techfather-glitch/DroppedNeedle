@@ -63,10 +63,9 @@
 		await oidcForm.save();
 	}
 
-	// Only ID + redirect URI gate the toggle: PKCE lets public clients log in
-	// without a client secret, so the secret stays optional.
+	// Client secret is optional: public clients use PKCE (no secret).
 	const hasOidcCredentials = $derived(
-		Boolean(oidcForm.data?.client_id) && Boolean(oidcForm.data?.redirect_uri)
+		Boolean(oidcForm.data?.client_id && oidcForm.data?.redirect_uri)
 	);
 	const oidcToggleDisabled = $derived(
 		!hasOidcCredentials || (!oidcForm.testResult?.valid && !oidcForm.wasAlreadyEnabled)
@@ -414,7 +413,7 @@
 						<label class="label" for="oidc-client-secret">
 							<span class="label-text font-medium">Client Secret</span>
 							<span class="label-text-alt opacity-60"
-								>optional - leave blank for public/PKCE clients</span
+								>optional — leave blank for public/PKCE clients</span
 							>
 						</label>
 						<label class="input input-bordered flex items-center gap-2 w-full">
@@ -502,7 +501,7 @@
 								<span class="label-text font-medium">Allow login with SSO</span>
 								<p class="text-xs text-base-content/50">
 									{#if !hasOidcCredentials}
-										Enter a client ID and redirect URI to enable SSO.
+										Fill in the client ID and redirect URI first.
 									{:else if !oidcForm.testResult?.valid && !oidcForm.wasAlreadyEnabled}
 										Test and get a valid connection to enable
 									{:else}

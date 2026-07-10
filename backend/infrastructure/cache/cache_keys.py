@@ -15,6 +15,10 @@ MB_RECORDING_TO_RG_PREFIX = "mb:recording_to_rg:"
 MB_ARTIST_RELS_PREFIX = "mb:artist_rels:"
 MB_ARTISTS_BY_TAG_PREFIX = "mb_artists_by_tag:"
 MB_RG_BY_TAG_PREFIX = "mb_rg_by_tag:"
+MB_ARTIST_EXPANSION_PREFIX = "mb:artist_expansion:"
+MB_LABEL_RELEASES_PREFIX = "mb:label_releases:"
+
+TASTE_GRAPH_PREFIX = "taste_graph:"
 
 LB_PREFIX = "lb_"
 
@@ -63,22 +67,6 @@ GITHUB_RELEASES_PREFIX = "github:releases:"
 
 AUDIODB_PREFIX = "audiodb_"
 
-GETIT_OPTIONS_PREFIX = "getit:options:"
-GETIT_ARTIST_OPTIONS_PREFIX = "getit:artist_options:"
-
-
-def getit_prefixes() -> list[str]:
-    """"Get it" purchase-option keys; swept when Get-it settings change."""
-    return [GETIT_OPTIONS_PREFIX, GETIT_ARTIST_OPTIONS_PREFIX]
-
-
-def getit_options_key(release_group_mbid: str, region: str, decorated: bool) -> str:
-    return f"{GETIT_OPTIONS_PREFIX}{release_group_mbid}:{region}:{int(decorated)}"
-
-
-def getit_artist_options_key(artist_mbid: str, decorated: bool) -> str:
-    return f"{GETIT_ARTIST_OPTIONS_PREFIX}{artist_mbid}:{int(decorated)}"
-
 
 def musicbrainz_prefixes() -> list[str]:
     """All MusicBrainz cache key prefixes for bulk invalidation."""
@@ -96,6 +84,8 @@ def musicbrainz_prefixes() -> list[str]:
         MB_ARTIST_RELS_PREFIX,
         MB_ARTISTS_BY_TAG_PREFIX,
         MB_RG_BY_TAG_PREFIX,
+        MB_ARTIST_EXPANSION_PREFIX,
+        MB_LABEL_RELEASES_PREFIX,
     ]
 
 

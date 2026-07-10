@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Heart, ArrowRight, CalendarClock, Check, Disc3, ExternalLink } from 'lucide-svelte';
+	import PageHero from '$lib/ui/PageHero.svelte';
 	import AlbumImage from '$lib/components/AlbumImage.svelte';
 	import ArtistImage from '$lib/components/ArtistImage.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
@@ -58,12 +59,18 @@
 	<title>Following - DroppedNeedle</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-5xl px-2 py-4 sm:px-4 sm:py-8 lg:px-8">
-	<div class="mb-6 flex items-center gap-2">
-		<Heart class="h-6 w-6 text-primary" aria-hidden="true" />
-		<h1 class="text-2xl font-bold sm:text-3xl">Following</h1>
-	</div>
+<PageHero
+	title="Following"
+	subtitle="New releases, live shows, and the artists you care about."
+	eyebrow="Your artists"
+	tint="var(--color-error)"
+>
+	{#snippet icon()}
+		<Heart class="h-7 w-7" />
+	{/snippet}
+</PageHero>
 
+<div class="mx-auto w-full max-w-5xl px-2 pb-8 sm:px-4 lg:px-8">
 	{#if loading}
 		<div class="flex flex-col gap-8" aria-hidden="true">
 			<div class="grid grid-cols-3 gap-3 sm:grid-cols-5">

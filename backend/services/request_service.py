@@ -27,17 +27,14 @@ class RequestService:
         self,
         request_history: RequestHistoryStore,
         get_download_service: "Callable[[], DownloadService]",
-        acquisition,  # noqa: ANN001 - AcquisitionDispatcher; every dispatch goes through it
         quota_service: "QuotaService | None" = None,
     ):
         self._request_history = request_history
-        # cancel_task still goes direct to DownloadService, resolved fresh so a settings
-        # save (which rebuilds the singleton) is picked up rather than ignored until restart.
+        # A settings save rebuilds the DownloadService singleton, so resolve it fresh
+        # at every dispatch rather than capturing an instance (else a saved quality
+        # change is ignored until restart).
         self._get_download_service = get_download_service
         self._quota = quota_service
-        # every request_album dispatch goes through here; it picks the download client
-        # or Free Music, so RequestService cannot function without it
-        self._acquisition = acquisition
 
     async def request_album(
         self,
@@ -118,7 +115,7 @@ class RequestService:
         # auto-approve (trusted/admin): dispatch the native pipeline and link the
         # request to its task; the 'already_in_library' sentinel is guarded
         try:
-            task_id = await self._acquisition.request_album(
+            task_id = await self._get_download_service().request_album(
                 user_id=user_id or "",
                 release_group_mbid=musicbrainz_id,
                 artist_name=artist or "Unknown",
@@ -227,7 +224,7 @@ class RequestService:
             for item in new_items:
                 mbid = item["musicbrainz_id"]
                 try:
-                    task_id = await self._acquisition.request_album(
+                    task_id = await self._get_download_service().request_album(
                         user_id=user_id or "",
                         release_group_mbid=mbid,
                         artist_name=item.get("artist_name") or "Unknown",

@@ -9,6 +9,27 @@ from infrastructure.msgspec_fastapi import AppStruct
 
 LASTFM_SECRET_MASK = "••••••••"
 
+# Official hosts; overridable per-instance for self-hosted/compatible services
+# (libre.fm, Maloja, a self-hosted ListenBrainz) - mirrors the MusicBrainz
+# api_url pattern below.
+DEFAULT_LISTENBRAINZ_API_URL = "https://api.listenbrainz.org"
+DEFAULT_LASTFM_API_URL = "https://ws.audioscrobbler.com/2.0/"
+DEFAULT_LASTFM_AUTH_URL = "https://www.last.fm/api/auth/"
+
+
+def _normalize_endpoint_url(url: str, default: str, *, trailing_slash: bool = False) -> str:
+    """Normalize a user-supplied service endpoint URL exactly like the
+    MusicBrainz api_url: strip whitespace, silently fall back to the official
+    default when the value isn't an http(s) URL, and normalize the trailing
+    slash (Last.fm-style roots keep exactly one; ListenBrainz-style keep none)."""
+    url = (url or "").strip()
+    if not url or not url.startswith(("http://", "https://")):
+        url = default
+    url = url.rstrip("/")
+    if trailing_slash:
+        url += "/"
+    return url
+
 
 def _mask_secret(value: str) -> str:
     if not value:
@@ -24,6 +45,16 @@ class LastFmConnectionSettings(AppStruct):
     session_key: str = ""
     username: str = ""
     enabled: bool = False
+    api_url: str = DEFAULT_LASTFM_API_URL
+    auth_url: str = DEFAULT_LASTFM_AUTH_URL
+
+    def __post_init__(self) -> None:
+        self.api_url = _normalize_endpoint_url(
+            self.api_url, DEFAULT_LASTFM_API_URL, trailing_slash=True
+        )
+        self.auth_url = _normalize_endpoint_url(
+            self.auth_url, DEFAULT_LASTFM_AUTH_URL, trailing_slash=True
+        )
 
 
 class LastFmConnectionSettingsResponse(AppStruct):
@@ -32,6 +63,8 @@ class LastFmConnectionSettingsResponse(AppStruct):
     session_key: str = ""
     username: str = ""
     enabled: bool = False
+    api_url: str = DEFAULT_LASTFM_API_URL
+    auth_url: str = DEFAULT_LASTFM_AUTH_URL
 
     @classmethod
     def from_settings(cls, settings: LastFmConnectionSettings) -> "LastFmConnectionSettingsResponse":
@@ -41,6 +74,8 @@ class LastFmConnectionSettingsResponse(AppStruct):
             session_key=_mask_secret(settings.session_key),
             username=settings.username,
             enabled=settings.enabled,
+            api_url=settings.api_url,
+            auth_url=settings.auth_url,
         )
 
 
@@ -357,38 +392,6 @@ TICKETMASTER_KEY_MASK = "ticketmaster****"
 SKIDDLE_KEY_MASK = "skiddle****"
 
 
-class PluginConfig(AppStruct):
-    """Per-plugin admin state (phase 01b). ``enabled`` defaults to False on
-    purpose: dropping a folder into the plugins directory must never run code
-    until an admin flips it on (the documented trust model). ``settings`` holds
-    the values for the fields the plugin's manifest declares."""
-
-    enabled: bool = False
-    settings: dict[str, str] = {}
-
-
-class FreeMusicSettings(AppStruct):
-    """Free Music (D24): DroppedNeedle's own lawful download client. Downloads
-    Creative Commons and public-domain music from the Internet Archive, filtered
-    to items carrying an explicit licence. Enabled by default - it costs nothing,
-    needs no signup, and the lawful use it demonstrates is what makes having a
-    download engine defensible at all."""
-
-    enabled: bool = True
-    preferred_format: Literal["flac", "mp3"] = "flac"
-
-
-class GetItSettings(AppStruct):
-    """"Get it" purchase links (phase 01). ``store_region`` feeds the iTunes
-    Search ``country`` storefront parameter. ``support_droppedneedle`` gates
-    the affiliate decorator (D19): on = the app's baked-in tags decorate store
-    links and a disclosure line renders; off = every link is a clean direct
-    URL. No secrets here - affiliate tags are public strings."""
-
-    store_region: Annotated[str, msgspec.Meta(pattern=r"^[A-Za-z]{2}$")] = "US"
-    support_droppedneedle: bool = True
-
-
 class EventsSettings(AppStruct):
     """Upcoming Events sources (.dev-notes/Events). Both API keys are
     Fernet-encrypted secrets, masked on read, preserved on save when the
@@ -420,6 +423,8 @@ class LibrarySettings(AppStruct):
     staging_path: str = ""
     naming_template: str = DEFAULT_NAMING_TEMPLATE
     acoustid_api_key: str = ""
+    # optional online lyrics fetch (LRCLIB); off = fully offline lyrics lookup
+    lyrics_fetch_enabled: bool = False
 
 
 class LibraryPathRequest(AppStruct):
@@ -480,6 +485,10 @@ class ListenBrainzConnectionSettings(AppStruct):
     username: str = ""
     user_token: str = ""
     enabled: bool = False
+    api_url: str = DEFAULT_LISTENBRAINZ_API_URL
+
+    def __post_init__(self) -> None:
+        self.api_url = _normalize_endpoint_url(self.api_url, DEFAULT_LISTENBRAINZ_API_URL)
 
 
 class YouTubeConnectionSettings(AppStruct):

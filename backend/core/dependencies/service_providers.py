@@ -44,6 +44,7 @@ from .repo_providers import (
     get_request_history_store,
     get_user_connections_store,
     get_user_listening_prefs_store,
+    get_user_genre_prefs_store,
     get_play_history_store,
     get_follow_store,
     get_github_repository,
@@ -145,6 +146,7 @@ def get_file_processor() -> "FileProcessor":
         download_store=get_download_store(),
         held_dir=Path(get_settings().cache_dir) / "held",
         recycle_bin=resolve_bin_path(policy.recycle_bin_path, lib.library_paths),
+        lyrics_service=get_local_lyrics_service(),
     )
 
 
@@ -153,105 +155,6 @@ def get_sse_publisher() -> "SSEPublisher":
     from infrastructure.sse_publisher import SSEPublisher
 
     return SSEPublisher()
-
-
-@singleton
-def get_plugin_host() -> "PluginHost":
-    from core.config import get_settings
-    from infrastructure.plugins.host import PluginHost
-
-    return PluginHost(
-        plugins_dir=get_settings().root_app_dir / "plugins",
-        preferences_service=get_preferences_service(),
-    )
-
-
-@singleton
-def get_free_music_service() -> "FreeMusicService":
-    from services.native.free_music_service import FreeMusicService
-
-    from .repo_providers import get_archive_repository, get_free_music_store
-
-    return FreeMusicService(
-        store=get_free_music_store(),
-        archive=get_archive_repository(),
-        drop_import=get_drop_import_service(),
-        preferences_service=get_preferences_service(),
-        sse_publisher=get_sse_publisher(),
-    )
-
-
-@singleton
-def get_acquisition_dispatcher() -> "AcquisitionDispatcher":
-    from services.acquisition_dispatcher import AcquisitionDispatcher
-
-    # holds the getters, not instances: a settings save rebuilds DownloadService,
-    # and Free Music reads its settings per request - so the dispatcher itself
-    # never needs rebuilding
-    return AcquisitionDispatcher(
-        get_download_service=get_download_service,
-        get_free_music_service=get_free_music_service,
-        preferences_service=get_preferences_service(),
-    )
-
-
-@singleton
-def get_get_it_service() -> "GetItService":
-    from services.get_it_service import GetItService
-
-    from .repo_providers import get_itunes_repository, get_musicbrainz_repository
-
-    return GetItService(
-        mb_repo=get_musicbrainz_repository(),
-        itunes_repo=get_itunes_repository(),
-        preferences_service=get_preferences_service(),
-        cache=get_cache(),
-        plugin_host=get_plugin_host(),
-    )
-
-
-@singleton
-def get_drop_import_service() -> "DropImportService":
-    from core.config import get_settings
-    from services.native.drop_import_service import DropImportService
-
-    from .repo_providers import (
-        get_drop_import_store,
-        get_request_history_store,
-        get_wanted_store,
-    )
-
-    canonical = _build_import_invalidation(get_cache(), get_disk_cache(), get_library_db())
-
-    async def on_drop_import(*, mbid, artist_mbid, artist_name, title, year):  # noqa: ANN001, ANN202
-        # the canonical invalidator takes a request record; a drop needs no
-        # request to exist, so synthesize the album-shaped subset it reads
-        record = RequestHistoryRecord(
-            musicbrainz_id=mbid,
-            artist_name=artist_name or "",
-            album_title=title or "",
-            requested_at="",
-            status="imported",
-            artist_mbid=artist_mbid,
-            year=year,
-        )
-        await canonical(record)
-
-    return DropImportService(
-        store=get_drop_import_store(),
-        tagger=get_audio_tagger(),
-        fingerprinter=get_audio_fingerprinter(),
-        album_identifier=get_album_identifier(),
-        mb_matcher=get_musicbrainz_matcher(),
-        naming_engine=get_naming_template_engine(),
-        library_manager=get_library_manager(),
-        preferences_service=get_preferences_service(),
-        request_history=get_request_history_store(),
-        wanted_store=get_wanted_store(),
-        sse_publisher=get_sse_publisher(),
-        on_import=on_drop_import,
-        staging_root=get_settings().root_app_dir / "imports",
-    )
 
 
 @singleton
@@ -320,7 +223,7 @@ def get_new_release_service() -> "NewReleaseService":
     return NewReleaseService(
         follow_store=get_follow_store(),
         mb_repo=get_musicbrainz_repository(),
-        acquisition=get_acquisition_dispatcher(),
+        get_download_service=get_download_service,
         download_store=get_download_store(),
         library_repo=get_library_repository(),
         sse_publisher=get_sse_publisher(),
@@ -397,7 +300,7 @@ def get_personal_mix_service() -> "PersonalMixService":
         mb_repo=get_musicbrainz_repository(),
         library_repo=get_library_repository(),
         playlist_service=get_playlist_service(),
-        acquisition=get_acquisition_dispatcher(),
+        get_download_service=get_download_service,
         listening_prefs_store=get_user_listening_prefs_store(),
         connections_store=get_user_connections_store(),
         auth_store=get_auth_store(),
@@ -449,10 +352,7 @@ def get_request_service() -> "RequestService":
 
     request_history = get_request_history_store()
     return RequestService(
-        request_history,
-        get_download_service=get_download_service,
-        quota_service=get_quota_service(),
-        acquisition=get_acquisition_dispatcher(),
+        request_history, get_download_service=get_download_service, quota_service=get_quota_service()
     )
 
 
@@ -558,7 +458,6 @@ def get_requests_page_service() -> "RequestsPageService":
         on_import_callback=on_import,
         get_download_service=get_download_service,
         download_store=get_download_store(),
-        acquisition=get_acquisition_dispatcher(),
     )
 
 
@@ -803,7 +702,8 @@ def get_lastfm_auth_service() -> "LastFmAuthService":
     from services.lastfm_auth_service import LastFmAuthService
 
     lastfm_repo = get_lastfm_repository()
-    return LastFmAuthService(lastfm_repo=lastfm_repo)
+    auth_url = get_preferences_service().get_lastfm_connection().auth_url
+    return LastFmAuthService(lastfm_repo=lastfm_repo, auth_url=auth_url)
 
 
 @singleton
@@ -839,7 +739,21 @@ def get_scrobble_service() -> "ScrobbleService":
         client_factory=get_per_user_client_factory(),
         listening_prefs_store=get_user_listening_prefs_store(),
         play_history_store=get_play_history_store(),
-        plugin_host=get_plugin_host(),
+    )
+
+
+@singleton
+def get_taste_graph_service() -> "TasteGraphService":
+    from services.taste_graph_service import TasteGraphService
+
+    return TasteGraphService(
+        library_db=get_library_db(),
+        follow_store=get_follow_store(),
+        play_history_store=get_play_history_store(),
+        mb_repo=get_musicbrainz_repository(),
+        cache=get_cache(),
+        genre_index=get_genre_index(),
+        genre_prefs_store=get_user_genre_prefs_store(),
     )
 
 
@@ -904,6 +818,40 @@ def get_discover_service() -> "DiscoverService":
         follow_service=get_follow_service(),
         cover_repo=get_coverart_repository(),
         preview_repo=get_preview_repository(),
+        disk_cache=get_disk_cache(),
+        genre_prefs_store=get_user_genre_prefs_store(),
+    )
+
+
+@singleton
+def get_smart_playlist_service() -> "SmartPlaylistService":
+    from services.smart_playlist_service import SmartPlaylistService
+    from services.discover.mbid_resolution_service import MbidResolutionService
+    from services.discover.radio_plan_service import RadioPlanService
+
+    library_db = get_library_db()
+    genre_index = get_genre_index()
+    mbid_svc = MbidResolutionService(
+        musicbrainz_repo=get_musicbrainz_repository(),
+        library_repo=get_library_repository(),
+        listenbrainz_repo=get_listenbrainz_repository(),
+        library_db=library_db,
+        mbid_store=get_mbid_store(),
+    )
+    radio_plan = RadioPlanService(
+        lb_repo=get_listenbrainz_repository(),
+        mb_repo=get_musicbrainz_repository(),
+        mbid_svc=mbid_svc,
+        library_db=library_db,
+        genre_index=genre_index,
+        lfm_repo=get_lastfm_repository(),
+        preview_repo=get_preview_repository(),
+    )
+    return SmartPlaylistService(
+        radio_plan=radio_plan,
+        playlist_service=get_playlist_service(),
+        genre_index=genre_index,
+        library_db=library_db,
     )
 
 
@@ -949,6 +897,32 @@ def get_local_files_service() -> "LocalFilesService":
     preferences_service = get_preferences_service()
     cache = get_cache()
     return LocalFilesService(library_repo, preferences_service, cache)
+
+
+@singleton
+def get_local_lyrics_service() -> "LocalLyricsService":
+    from services.local_lyrics_service import LocalLyricsService
+
+    from .repo_providers import get_lrclib_repository
+
+    return LocalLyricsService(
+        get_local_files_service(),
+        library_repo=get_library_repository(),
+        preferences_service=get_preferences_service(),
+        lrclib_repository=get_lrclib_repository(),
+    )
+
+
+@singleton
+def get_lyrics_lookup_service() -> "LyricsLookupService":
+    from services.lyrics_lookup_service import LyricsLookupService
+
+    from .repo_providers import get_lrclib_repository
+
+    return LyricsLookupService(
+        get_preferences_service(),
+        get_lrclib_repository(),
+    )
 
 
 @singleton
@@ -1075,6 +1049,36 @@ def get_download_manifest_codec() -> "ManifestCodec":
     return ManifestCodec()
 
 
+def _resolve_acquisition_providers() -> tuple:
+    """Resolve the per-source (indexer, download-client) pairs through the plugin
+    registry - the acquisition seam. The built-in plugins return the exact same
+    singletons the orchestrator used pre-plugins (``get_slskd_repository`` /
+    ``get_slskd_indexer`` / ``get_newznab_indexer`` / ``get_sabnzbd_download_client``),
+    so behaviour is unchanged; the direct providers remain only as a fallback for
+    the (should-never-happen) case of a quarantined built-in."""
+    from .plugin_providers import get_plugin_manager
+    from .repo_providers import (
+        get_download_client_repository,
+        get_newznab_indexer,
+        get_sabnzbd_download_client,
+        get_slskd_indexer,
+    )
+
+    manager = get_plugin_manager()
+    soulseek = manager.get_plugin("soulseek")
+    usenet = manager.get_plugin("usenet")
+    if soulseek is None or usenet is None:  # pragma: no cover - built-ins always load
+        logger.error(
+            "plugins.builtin_missing - falling back to direct providers",
+            extra={"soulseek": soulseek is not None, "usenet": usenet is not None},
+        )
+    client = soulseek.get_download_client() if soulseek else get_download_client_repository()
+    indexer = soulseek.get_indexer() if soulseek else get_slskd_indexer()
+    usenet_client = usenet.get_download_client() if usenet else get_sabnzbd_download_client()
+    usenet_indexer = usenet.get_indexer() if usenet else get_newznab_indexer()
+    return client, indexer, usenet_client, usenet_indexer
+
+
 @singleton
 def get_download_orchestrator() -> "DownloadOrchestrator":
     from pathlib import Path
@@ -1082,14 +1086,9 @@ def get_download_orchestrator() -> "DownloadOrchestrator":
     from core.config import get_settings
     from services.native.download_orchestrator import DownloadOrchestrator
 
-    from .repo_providers import (
-        get_download_client_repository,
-        get_download_store,
-        get_newznab_indexer,
-        get_sabnzbd_download_client,
-        get_slskd_indexer,
-    )
+    from .repo_providers import get_download_store
 
+    client, indexer, usenet_client, usenet_indexer = _resolve_acquisition_providers()
     prefs = get_preferences_service()
     lib = prefs.get_library_settings_raw()
     policy = prefs.get_download_policy()
@@ -1103,8 +1102,8 @@ def get_download_orchestrator() -> "DownloadOrchestrator":
         else Path(get_settings().cache_dir) / "download-staging"
     )
     return DownloadOrchestrator(
-        client=get_download_client_repository(),
-        indexer=get_slskd_indexer(),
+        client=client,
+        indexer=indexer,
         download_store=get_download_store(),
         file_processor=get_file_processor(),
         library_manager=get_library_manager(),
@@ -1127,8 +1126,8 @@ def get_download_orchestrator() -> "DownloadOrchestrator":
         on_import_callback=_build_import_invalidation(
             get_cache(), get_disk_cache(), get_library_db()
         ),
-        usenet_indexer=get_newznab_indexer(),
-        usenet_client=get_sabnzbd_download_client(),
+        usenet_indexer=usenet_indexer,
+        usenet_client=usenet_client,
         usenet_scorer=get_newznab_release_scorer(),
         usenet_enabled=usenet_enabled,
         soulseek_enabled=dc.enabled,
@@ -1150,12 +1149,10 @@ def get_download_service() -> "DownloadService":
 
     from .repo_providers import (
         get_album_release_pin_store,
-        get_download_client_repository,
         get_download_store,
-        get_newznab_indexer,
-        get_slskd_indexer,
     )
 
+    client, indexer, _usenet_client, usenet_indexer = _resolve_acquisition_providers()
     prefs = get_preferences_service()
     dc = prefs.get_download_client_settings_raw()
     policy = prefs.get_download_policy()
@@ -1163,8 +1160,8 @@ def get_download_service() -> "DownloadService":
     # The service is "enabled" if ANY source can act (slskd OR usenet), so a Usenet-only
     # install isn't blocked by the slskd-disabled guard.
     return DownloadService(
-        download_client=get_download_client_repository(),
-        indexer=get_slskd_indexer(),
+        download_client=client,
+        indexer=indexer,
         scorer=get_album_preflight_scorer(),
         library_manager=get_library_repository(),
         download_store=get_download_store(),
@@ -1178,7 +1175,7 @@ def get_download_service() -> "DownloadService":
         auto_accept_threshold=policy.preflight_score_auto_accept,
         manual_threshold=policy.preflight_score_manual_min,
         enabled=dc.enabled or usenet_enabled,
-        usenet_indexer=get_newznab_indexer(),
+        usenet_indexer=usenet_indexer,
         usenet_scorer=get_newznab_release_scorer(),
         usenet_enabled=usenet_enabled,
         soulseek_enabled=dc.enabled,

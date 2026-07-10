@@ -94,6 +94,7 @@ def get_listenbrainz_repository() -> "ListenBrainzRepository":
         username=lb_settings.username if lb_settings.enabled else "",
         user_token=lb_settings.user_token if lb_settings.enabled else "",
         fallback_token_provider=fallback_token_provider,
+        base_url=lb_settings.api_url,
     )
 
 
@@ -240,6 +241,7 @@ def get_lastfm_repository() -> "LastFmRepository":
         api_key=lf_settings.api_key,
         shared_secret=lf_settings.shared_secret,
         session_key=lf_settings.session_key,
+        base_url=lf_settings.api_url,
     )
 
 
@@ -270,46 +272,6 @@ def get_wanted_store() -> "WantedStore":
 
     settings = get_settings()
     return WantedStore(db_path=settings.library_db_path, write_lock=get_persistence_write_lock())
-
-
-@singleton
-def get_archive_repository() -> "ArchiveRepository":
-    from infrastructure.http.client import HttpClientFactory
-    from repositories.archive_repository import ArchiveRepository
-
-    # generous timeout: this client streams whole albums, not JSON
-    http = HttpClientFactory.get_client(name="internet-archive", timeout=120.0)
-    return ArchiveRepository(http)
-
-
-@singleton
-def get_free_music_store() -> "FreeMusicStore":
-    from infrastructure.persistence.free_music_store import FreeMusicStore
-
-    from .cache_providers import get_persistence_write_lock
-
-    settings = get_settings()
-    return FreeMusicStore(db_path=settings.library_db_path, write_lock=get_persistence_write_lock())
-
-
-@singleton
-def get_itunes_repository() -> "ITunesRepository":
-    from infrastructure.http.client import HttpClientFactory
-    from repositories.itunes_repository import ITunesRepository
-
-    # dedicated client name: the factory caches clients by name and the first
-    # caller's kwargs win, so a non-default surface gets its own entry
-    http = HttpClientFactory.get_client(name="itunes-search", timeout=10.0)
-    return ITunesRepository(http)
-
-
-@singleton
-def get_drop_import_store() -> "DropImportStore":
-    from infrastructure.persistence.drop_import_store import DropImportStore
-    from .cache_providers import get_persistence_write_lock
-
-    settings = get_settings()
-    return DropImportStore(db_path=settings.library_db_path, write_lock=get_persistence_write_lock())
 
 
 @singleton
@@ -349,6 +311,14 @@ def get_geocoding_repository() -> "GeocodingRepository":
 
     http = HttpClientFactory.get_client(name="open-meteo-geocoding", timeout=10.0)
     return GeocodingRepository(http)
+
+
+@singleton
+def get_lrclib_repository() -> "LrcLibRepository":
+    from repositories.lrclib_repository import LRCLIB_TIMEOUT_SECONDS, LrcLibRepository
+
+    http = HttpClientFactory.get_client(name="lrclib", timeout=LRCLIB_TIMEOUT_SECONDS)
+    return LrcLibRepository(http)
 
 
 @singleton
@@ -398,6 +368,17 @@ def get_user_section_prefs_store() -> "UserSectionPrefsStore":
 
     settings = get_settings()
     return UserSectionPrefsStore(
+        db_path=settings.library_db_path, write_lock=get_persistence_write_lock()
+    )
+
+
+@singleton
+def get_user_genre_prefs_store() -> "UserGenrePrefsStore":
+    from infrastructure.persistence.user_genre_prefs_store import UserGenrePrefsStore
+    from .cache_providers import get_persistence_write_lock
+
+    settings = get_settings()
+    return UserGenrePrefsStore(
         db_path=settings.library_db_path, write_lock=get_persistence_write_lock()
     )
 
@@ -692,10 +673,18 @@ def get_download_client(client_type: str) -> "DownloadClientProtocol":
             raise ConfigurationError(f"Unknown download client type: {other!r}")
 
 
-# Fixed v1 source → client_type map (assembled in get_sources, dispatched here).
+# Fixed v1 source → client_type map (fallback for the built-in sources when the
+# plugin registry can't answer - should never happen once the manager has loaded).
 _SOURCE_CLIENT_TYPE = {"soulseek": "slskd", "usenet": "sabnzbd"}
 
 
 def get_download_client_for_source(source: str) -> "DownloadClientProtocol":
-    """Resolve the download client that owns a given acquisition source."""
+    """Resolve the download client that owns a given acquisition source, via the
+    plugin registry (source ids ARE plugin ids: 'soulseek'/'usenet' plus any
+    third-party plugin). Falls back to the fixed built-in map."""
+    from .plugin_providers import get_plugin_manager
+
+    plugin = get_plugin_manager().get_plugin(source)
+    if plugin is not None:
+        return plugin.get_download_client()
     return get_download_client(_SOURCE_CLIENT_TYPE.get(source, source))

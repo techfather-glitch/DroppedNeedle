@@ -1092,46 +1092,22 @@ export type LastFmConnectionSettingsResponse = {
 	session_key: string;
 	username: string;
 	enabled: boolean;
+	api_url: string;
+	auth_url: string;
+};
+
+// mirrors backend api/v1/schemas/settings.py (ListenBrainzConnectionSettings)
+export type ListenBrainzConnectionSettings = {
+	username: string;
+	user_token: string;
+	enabled: boolean;
+	api_url: string;
 };
 
 export type SpotifySettings = {
 	client_id: string;
 	client_secret: string;
 	enabled: boolean;
-};
-
-// mirrors backend api/v1/schemas/settings.py (FreeMusicSettings)
-export type FreeMusicSettings = {
-	enabled: boolean;
-	preferred_format: 'flac' | 'mp3';
-};
-
-// mirrors backend api/v1/schemas/settings.py (GetItSettings)
-export type GetItSettings = {
-	store_region: string; // ISO 3166-1 alpha-2, feeds the iTunes storefront
-	support_droppedneedle: boolean; // D19 affiliate toggle
-};
-
-// mirrors backend api/v1/schemas/get_it.py
-export type PurchaseLink = {
-	store: string;
-	label: string;
-	url: string;
-	kind: 'digital' | 'physical' | 'free';
-};
-
-export type PurchaseOptionsResponse = {
-	digital: PurchaseLink[];
-	physical: PurchaseLink[];
-	free: PurchaseLink[];
-	bandcamp_search_url: string;
-	disclosure: boolean;
-};
-
-export type ArtistPurchaseOptionsResponse = {
-	links: PurchaseLink[];
-	bandcamp_search_url: string;
-	disclosure: boolean;
 };
 
 // mirrors backend api/v1/schemas/settings.py (EventsSettings)
@@ -1642,6 +1618,7 @@ export interface LibrarySettings {
 	staging_path: string;
 	naming_template: string;
 	acoustid_api_key: string;
+	lyrics_fetch_enabled: boolean;
 }
 
 export type ScanFrequency =
@@ -1768,6 +1745,58 @@ export interface IndexerSavedResponse {
 export interface OperationResult {
 	success: boolean;
 	message?: string | null;
+}
+
+// Acquisition plugins (hand-mirrors backend api/v1/schemas/plugins.py)
+export interface PluginInfo {
+	id: string;
+	name: string;
+	version: string;
+	builtin: boolean;
+	enabled: boolean;
+	loaded: boolean;
+	error?: string | null;
+	source: string;
+	api_version?: number | null;
+}
+
+export interface PluginListResponse {
+	plugins: PluginInfo[];
+	api_version: number;
+}
+
+export type PluginSettingsValue = string | number | boolean | null;
+
+export interface PluginSelectOption {
+	value: string | number;
+	label: string;
+}
+
+export interface PluginSettingsField {
+	key: string;
+	type: 'str' | 'int' | 'bool' | 'select' | 'secret';
+	label: string;
+	help: string;
+	default: PluginSettingsValue;
+	required: boolean;
+	options: PluginSelectOption[];
+}
+
+export interface PluginSettingsResponse {
+	id: string;
+	schema: PluginSettingsField[];
+	values: Record<string, PluginSettingsValue>;
+}
+
+export interface PluginToggleResponse {
+	id: string;
+	enabled: boolean;
+}
+
+export interface PluginTestResult {
+	valid: boolean;
+	message: string;
+	version?: string | null;
 }
 
 export interface SabnzbdConnectionSettings {
@@ -2103,6 +2132,23 @@ export interface SectionPrefsResponse {
 export interface SectionPrefsUpdate {
 	page: 'home' | 'discover';
 	sections: { key: string; enabled: boolean }[];
+}
+
+export type GenrePrefLevel = 'normal' | 'reduce' | 'mute';
+
+export interface GenrePrefItem {
+	family: string;
+	label: string;
+	artist_count: number;
+	level: GenrePrefLevel;
+}
+
+export interface GenrePrefsResponse {
+	genres: GenrePrefItem[];
+}
+
+export interface GenrePrefsUpdate {
+	genres: { family: string; level: GenrePrefLevel }[];
 }
 
 export interface PreviewTrackItem {

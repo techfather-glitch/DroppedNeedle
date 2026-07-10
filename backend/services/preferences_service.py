@@ -39,9 +39,6 @@ from api.v1.schemas.settings import (
     SpotifySettings,
     SPOTIFY_SECRET_MASK,
     EventsSettings,
-    FreeMusicSettings,
-    GetItSettings,
-    PluginConfig,
     TICKETMASTER_KEY_MASK,
     SKIDDLE_KEY_MASK,
     DEFAULT_NAMING_TEMPLATE,
@@ -509,36 +506,9 @@ class PreferencesService:
         sab = self.get_sabnzbd_connection()
         return sab.enabled and bool(sab.url) and any(i.enabled for i in self.get_indexers())
 
-    def is_builtin_download_ready(self) -> bool:
-        """A user-configured download client (Soulseek OR Usenet) is set up.
-        Chooses the dispatcher; dies with those clients in 2.0."""
-        return self.is_soulseek_ready() or self.is_usenet_ready()
-
     def is_download_source_ready(self) -> bool:
-        """At least one acquisition source is set up: Soulseek, Usenet, or Free
-        Music (D24). The single source of truth for "can the user acquire" -
-        after 2.0 this reduces to Free Music alone."""
-        return self.is_builtin_download_ready() or self.get_free_music_settings().enabled
-
-    def get_free_music_settings(self) -> FreeMusicSettings:
-        data = self._load_config().get("free_music", {})
-        fmt = str(data.get("preferred_format") or "flac").lower()
-        return FreeMusicSettings(
-            enabled=bool(data.get("enabled", True)),
-            preferred_format="mp3" if fmt == "mp3" else "flac",
-        )
-
-    def save_free_music_settings(self, settings: FreeMusicSettings) -> None:
-        try:
-            config = self._load_config().copy()
-            config["free_music"] = {
-                "enabled": settings.enabled,
-                "preferred_format": settings.preferred_format,
-            }
-            self._save_config(config)
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"Failed to save Free Music settings: {e}")
-            raise ConfigurationError("Failed to save Free Music settings")
+        """At least one acquisition source (Soulseek OR Usenet) is set up."""
+        return self.is_soulseek_ready() or self.is_usenet_ready()
 
     def get_jellyfin_connection(self) -> JellyfinConnectionSettings:
         config = self._load_config()
@@ -675,6 +645,7 @@ class PreferencesService:
             username=lb_data.get("username", ""),
             user_token=user_token,
             enabled=lb_data.get("enabled", False),
+            api_url=lb_data.get("api_url", ""),
         )
 
     def save_listenbrainz_connection(self, settings: ListenBrainzConnectionSettings) -> None:
@@ -684,6 +655,7 @@ class PreferencesService:
                 "username": settings.username,
                 "user_token": encrypt(settings.user_token),
                 "enabled": settings.enabled,
+                "api_url": settings.api_url,
             }
             self._save_config(config)
         except Exception as e:  # noqa: BLE001
@@ -771,6 +743,8 @@ class PreferencesService:
             session_key=self._read_secret(("lastfm_settings", "session_key"), data.get("session_key", "")),
             username=data.get("username", ""),
             enabled=data.get("enabled", False),
+            api_url=data.get("api_url", ""),
+            auth_url=data.get("auth_url", ""),
         )
 
     def save_lastfm_connection(self, settings: LastFmConnectionSettings) -> None:
@@ -803,6 +777,8 @@ class PreferencesService:
                 session_key=encrypt(session_key),
                 username=username,
                 enabled=enabled,
+                api_url=settings.api_url,
+                auth_url=settings.auth_url,
             )
             self._save_section("lastfm_settings", resolved)
         except Exception as e:  # noqa: BLE001
@@ -853,51 +829,6 @@ class PreferencesService:
     def is_spotify_enabled(self) -> bool:
         raw = self.get_spotify_settings_raw()
         return raw.enabled and bool(raw.client_id) and bool(raw.client_secret)
-
-    def get_get_it_settings(self) -> GetItSettings:
-        """"Get it" purchase-link settings (no secrets - safe for API responses)."""
-        data = self._load_config().get("get_it", {})
-        return GetItSettings(
-            store_region=(data.get("store_region") or "US").upper(),
-            support_droppedneedle=bool(data.get("support_droppedneedle", True)),
-        )
-
-    def save_get_it_settings(self, settings: GetItSettings) -> None:
-        try:
-            config = self._load_config().copy()
-            config["get_it"] = {
-                "store_region": settings.store_region.upper(),
-                "support_droppedneedle": settings.support_droppedneedle,
-            }
-            self._save_config(config)
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"Failed to save Get it settings: {e}")
-            raise ConfigurationError("Failed to save Get it settings")
-
-    def get_plugin_config(self, plugin_name: str) -> PluginConfig:
-        """Per-plugin admin state (01b). Unknown plugins get the safe default:
-        disabled, no settings."""
-        section = self._load_config().get("plugins", {})
-        data = section.get(plugin_name, {}) if isinstance(section, dict) else {}
-        raw_settings = data.get("settings", {})
-        settings = {
-            str(k): str(v) for k, v in raw_settings.items()
-        } if isinstance(raw_settings, dict) else {}
-        return PluginConfig(enabled=bool(data.get("enabled", False)), settings=settings)
-
-    def save_plugin_config(self, plugin_name: str, plugin_config: PluginConfig) -> None:
-        try:
-            config = self._load_config().copy()
-            section = dict(config.get("plugins", {}))
-            section[plugin_name] = {
-                "enabled": plugin_config.enabled,
-                "settings": dict(plugin_config.settings),
-            }
-            config["plugins"] = section
-            self._save_config(config)
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"Failed to save plugin config for {plugin_name}: {e}")
-            raise ConfigurationError("Failed to save plugin settings")
 
     def _events_section_raw(self) -> EventsSettings:
         config = self._load_config()
@@ -995,6 +926,7 @@ class PreferencesService:
             staging_path=settings.staging_path,
             naming_template=settings.naming_template,
             acoustid_api_key=ACOUSTID_KEY_MASK if settings.acoustid_api_key else "",
+            lyrics_fetch_enabled=settings.lyrics_fetch_enabled,
         )
 
     def get_library_settings_raw(self) -> LibrarySettings:
@@ -1008,6 +940,7 @@ class PreferencesService:
             staging_path=settings.staging_path,
             naming_template=settings.naming_template,
             acoustid_api_key=api_key,
+            lyrics_fetch_enabled=settings.lyrics_fetch_enabled,
         )
 
     def save_library_settings(self, settings: LibrarySettings) -> None:
@@ -1025,6 +958,7 @@ class PreferencesService:
                     staging_path=settings.staging_path,
                     naming_template=settings.naming_template or DEFAULT_NAMING_TEMPLATE,
                     acoustid_api_key=api_key,
+                    lyrics_fetch_enabled=settings.lyrics_fetch_enabled,
                 ),
             )
         except Exception as e:  # noqa: BLE001
@@ -1050,6 +984,29 @@ class PreferencesService:
         except Exception as e:  # noqa: BLE001
             logger.error("Failed to save primary music source: %s", e)
             raise ConfigurationError(f"Failed to save primary music source: {e}")
+
+    # --- Acquisition plugins - per-plugin namespaced config (plugins.{id}) --------
+    # The PluginManager owns the shape ({"enabled": bool, "settings": {...}} with
+    # secret values Fernet-encrypted by the manager against the plugin's schema);
+    # this layer only persists the namespaced dicts. Built-in plugins don't use this
+    # namespace - they proxy their pre-existing sections (download_client /
+    # download_clients.sabnzbd), so the legacy routes and the plugin API stay in sync.
+
+    def get_plugins_config(self) -> dict:
+        """The whole ``plugins`` section: ``{plugin_id: {...}}``."""
+        section = self._load_config().get("plugins", {})
+        return dict(section) if isinstance(section, dict) else {}
+
+    def save_plugin_config(self, plugin_id: str, cfg: dict) -> None:
+        try:
+            config = self._load_config().copy()
+            section = dict(config.get("plugins", {}))
+            section[plugin_id] = cfg
+            config["plugins"] = section
+            self._save_config(config)
+        except Exception as e:  # noqa: BLE001
+            logger.error("Failed to save plugin config for %s: %s", plugin_id, e)
+            raise ConfigurationError(f"Failed to save plugin config: {e}")
 
     def get_setting(self, key: str) -> Any:
         config = self._load_config()
