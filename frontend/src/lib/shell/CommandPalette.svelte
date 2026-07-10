@@ -160,10 +160,10 @@
 			navCommand('library-tracks', 'Library · Tracks', Library, '/library/tracks'),
 			navCommand('following', 'Following', Heart, '/following', 'artists concerts releases'),
 			navCommand('downloads', 'Downloads', Download, '/downloads', 'queue transfers'),
-			navCommand('profile', 'Profile', UserRound, '/profile', 'account connections')
+			navCommand('profile', 'Profile', UserRound, '/profile', 'account connections'),
+			navCommand('playlists', 'Playlists', ListMusic, '/playlists')
 		];
 		if (downloadClientConfigured) {
-			cmds.push(navCommand('playlists', 'Playlists', ListMusic, '/playlists'));
 			cmds.push(navCommand('requests', 'Requests', Inbox, '/requests', 'history wanted'));
 		}
 		if (integrations.current.localfiles) {

@@ -86,12 +86,10 @@
 			</div>
 		</div>
 
-		{#if downloadClientConfigured}
-			<a href="/playlists?new=1" class="dn-sidebar__cta">
-				<Plus class="h-3.5 w-3.5" />
-				New playlist
-			</a>
-		{/if}
+		<a href="/playlists?new=1" class="dn-sidebar__cta">
+			<Plus class="h-3.5 w-3.5" />
+			New playlist
+		</a>
 
 		<button type="button" class="dn-navitem w-full" data-tip="Search" onclick={openSearch}>
 			<Search class="dn-navitem__icon" />
@@ -177,20 +175,18 @@
 
 		<p class="dn-navgroup is-drawer-close:opacity-0">Your music</p>
 		<ul class="dn-navlist">
-			{#if downloadClientConfigured}
-				<li>
-					<a
-						href="/playlists"
-						class="dn-navitem"
-						data-tip="Playlists"
-						class:dn-navitem--active={isNavActive('/playlists')}
-						aria-current={isNavActive('/playlists') ? 'page' : undefined}
-					>
-						<ListMusic class="dn-navitem__icon" />
-						<span class="dn-navitem__label">Playlists</span>
-					</a>
-				</li>
-			{/if}
+			<li>
+				<a
+					href="/playlists"
+					class="dn-navitem"
+					data-tip="Playlists"
+					class:dn-navitem--active={isNavActive('/playlists')}
+					aria-current={isNavActive('/playlists') ? 'page' : undefined}
+				>
+					<ListMusic class="dn-navitem__icon" />
+					<span class="dn-navitem__label">Playlists</span>
+				</a>
+			</li>
 			<li>
 				<a
 					href="/following"
