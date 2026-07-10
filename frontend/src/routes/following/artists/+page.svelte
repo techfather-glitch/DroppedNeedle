@@ -89,7 +89,7 @@
 				{#each artists as a (a.mbid)}
 					{@const chip = stateChip(a)}
 					<div
-						class="group flex flex-col rounded-2xl border border-base-content/8 bg-base-200/50 p-3 transition-colors hover:border-primary/30"
+						class="group flex flex-col rounded-2xl border border-base-content/8 bg-base-200/50 p-3 transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
 					>
 						<div class="relative overflow-hidden rounded-xl">
 							<a href="/artist/{a.mbid}" aria-label="Open {a.name}">
@@ -100,7 +100,7 @@
 								/>
 							</a>
 							<button
-								class="btn btn-circle btn-xs btn-error absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100"
+								class="btn btn-circle btn-xs btn-error absolute right-2 top-2 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
 								onclick={() => unfollow.mutate(a.mbid)}
 								disabled={unfollow.isPending}
 								aria-label="Unfollow {a.name}"

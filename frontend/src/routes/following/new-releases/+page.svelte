@@ -118,7 +118,7 @@
 				{#each items as item (item.release_group_mbid)}
 					{@const isRequested = requested.has(item.release_group_mbid)}
 					<div
-						class="group flex flex-col rounded-2xl border border-base-content/8 bg-base-200/50 p-3 transition-colors hover:border-primary/30"
+						class="group flex flex-col rounded-2xl border border-base-content/8 bg-base-200/50 p-3 transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
 					>
 						<a
 							href="/album/{item.release_group_mbid}"
